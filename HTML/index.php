@@ -1,0 +1,242 @@
+<?php
+include("conexion.php");
+
+
+
+// Consultar publicaciones con la imagen frontal
+$sql = "
+    SELECT 
+        i.id AS inmueble_id,  -- Asegúrate de incluir el ID
+        p.id AS publicacion_id,
+        i.descripcion AS inmueble_descripcion,
+        i.precio,
+        exi.imagen_id AS imagen,
+        im.url AS imagen_url
+    FROM 
+        Publicacion p
+    INNER JOIN 
+        Inmueble i ON p.inmueble_id = i.id
+    INNER JOIN 
+        EstanciaXInmueble exi ON i.id = exi.inmueble_id
+    INNER JOIN 
+        Imagen im ON exi.imagen_id = im.id
+    WHERE 
+        p.estado_publicacion_id = 1
+    ORDER BY
+        p.fecha_publicacion DESC
+    LIMIT 12  -- Limitar a 12 publicaciones
+";
+
+$result = $conn->query($sql);
+
+$publicaciones = [];
+if ($result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        $publicaciones[] = $row;
+    }
+}
+session_start();
+
+
+
+// Consulta para obtener los detalles del usuario autenticado, incluyendo tipo_id
+if (isset($_SESSION['user_id'])) {
+    $user_id = $_SESSION['user_id'];
+
+    // Usar una consulta preparada
+    $stmt = $conn->prepare("SELECT rol_id FROM usuario WHERE id = ?");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result_user = $stmt->get_result();
+
+    if ($result_user->num_rows > 0) {
+        $user_data = $result_user->fetch_assoc();
+        $user_tipo_id = $user_data['rol_id'];
+    } else {
+    }
+} else {
+}
+?>
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Godoy's House</title>
+    <link rel="stylesheet" href="css/css.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Quicksand:wght@300..700&display=swap" rel="stylesheet">    
+</head>
+<body>
+    <!-- Encabezado -->
+    <header>
+        <div class="logo">
+            <img src="img/logo.jpg" alt="logo">
+        </div>
+        <nav>
+            <ul>
+                <?php if (isset($_SESSION['user_id'])): ?>
+                <!-- Usuario autenticado -->
+                <li><a href="cerrar_sesion.php">Salir</a></li>
+                <li><a href="micuenta.php">Mi cuenta</a></li>
+                <?php else: ?>
+                <!-- Usuario no autenticado -->
+                <li><a href="iniciar_sesion.php">Ingresar</a></li>
+                <?php endif; ?>
+                <li><a href="#" class="clickable"onclick="mostrarPHP('index.php')">Inicio</a></li>
+                <li><a href="#" class="clickable" onclick="mostrarPHP('Nosotros.php')">Nosotros</a></li>
+    <script>
+        function mostrarPHP(nombre) {
+            window.location.href = nombre;
+
+        }
+    </script>
+                <?php if (isset($user_tipo_id) && $user_tipo_id != 1 && $user_tipo_id !=2): ?>
+                <li><a href="venta.php">En Venta</a></li>
+                <li><a href="renta.php">En Renta</a></li>
+                <li><a href="buscar.php">Buscar Inmueble</a></li>
+                <li><a onclick="solicitarAsesoria(); return false;" style="cursor:pointer;">Solicitar Asesoría</a></li>
+                <?php endif; ?>
+                
+            </ul>
+        </nav>
+        
+    </header>
+    <p id="notificacion" class="notification"></p>
+<script>
+    function solicitarAsesoria() {
+        fetch('solicitar_asesoria.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({}) // En este caso, no necesitas enviar datos adicionales
+        })
+        .then(response => response.json())
+        .then(data => {
+            const notificacion = document.getElementById('notificacion');
+            if (data.status === 'success') {
+                notificacion.textContent = data.message;
+                notificacion.style.backgroundColor = 'rgba(0, 155, 0)';
+            } else {
+                notificacion.textContent = data.message;
+                notificacion.style.backgroundColor = 'rgba(255, 0, 0)';
+            }
+            notificacion.style.display = 'block';
+            setTimeout(() => {
+                notificacion.style.display = 'none';
+            }, 3000);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Ocurrió un error al solicitar la asesoría.');
+        });
+    }
+</script>
+<main>
+<img class="portada" src="img/portada.jpeg" alt="portada">
+    <section class="properties">
+        <h2>Más visitadas</h2>
+        <div class="carousel-container">
+            <div class="carousel-inner">
+                <?php if (!empty($publicaciones)) : ?>
+                    <?php 
+                    $slides = array_chunk($publicaciones, 3); // Agrupar por grupos de 3
+                    foreach ($slides as $index => $slide) : ?>
+                        <div class="carousel-item <?= $index === 0 ? 'active' : '' ?>">
+                            <div class="property-row">
+                            <?php foreach ($slide as $publicacion) : ?>
+                                <div class="property">
+                                    <a href="publicacion.php?id=<?= $publicacion['publicacion_id'] ?>" class="property-link">
+                                    
+                                    <img src="img/<?= htmlspecialchars($publicacion['imagen_url']) ?>"onerror="this.src='img/default.png';">
+                                    <div class="overlay">
+                                        <form id="propertyForm" action="publicacion.php" method="POST" class="property-card">
+                                            <input type="hidden" name="id" value="<?= htmlspecialchars($publicacion['inmueble_id']) ?>">
+                                            <span onclick="document.getElementById('propertyForm').submit();" style="cursor: pointer; color: blue; text-decoration: underline; border: none; background: none;">Ver detalles</span>
+                                        </form>
+                                    </div>          
+                                    </a>
+                                    <p class="p_carusel"><?= htmlspecialchars($publicacion['inmueble_descripcion']) ?></p>
+                                    <p class="p_carusel">$<?= number_format($publicacion['precio'], 2) ?> MXN</p>
+                                </div>
+                            <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php else : ?>
+                    <p>No hay publicaciones disponibles.</p>
+                <?php endif; ?>
+            </div>
+            <button class="carousel-control-prev" onclick="prevSlide()">&#10094;</button>
+            <button class="carousel-control-next" onclick="nextSlide()">&#10095;</button>
+        </div>
+        
+    </section>
+    
+</main>
+
+
+<!-- Pie de página -->
+<footer>
+        <img class="logo_footer" src="img/logo.jpg" alt="logo">
+        <div class="contact">
+            <p class="title_footer">Contáctanos</p>
+            <br>
+            <p>Estamos a tus órdenes</p>
+            <br>
+            <p>+52 6675456783</p>
+            <br>
+            <p>contacto.godoyshouse@gmail.com</p>
+        </div>
+        <div class="title_footer">
+            <p>Síguenos</p>
+            <br>
+            <a class="redes_sociales"><img src="img/instagram.png" alt="Instagram"></a>
+            <a class="redes_sociales"><img src="img/facebook.png" alt="Facebook"></a>
+        </div>
+        
+    </footer>
+
+
+<script>
+let currentSlide = 0;
+
+function showSlide(index) {
+    const slides = document.querySelectorAll('.carousel-item');
+    const totalSlides = slides.length;
+
+    // Asegurar que el índice esté dentro del rango
+    if (index >= totalSlides) {
+        currentSlide = 0;
+    } else if (index < 0) {
+        currentSlide = totalSlides - 1;
+    } else {
+        currentSlide = index;
+    }
+
+    const newTransformValue = -(currentSlide * 100) + '%';
+    document.querySelector('.carousel-inner').style.transform = `translateX(${newTransformValue})`;
+}
+
+function nextSlide() {
+    currentSlide++;
+    showSlide(currentSlide);
+}
+
+function prevSlide() {
+    currentSlide--;
+    showSlide(currentSlide);
+}
+
+// Inicializar el primer slide al cargar la página
+document.addEventListener('DOMContentLoaded', () => {
+    showSlide(currentSlide);
+});
+
+
+</script>
+</body>
+</html>
